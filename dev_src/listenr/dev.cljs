@@ -1,6 +1,6 @@
-(ns listenr-cljs.dev
+(ns listenr.dev
     (:require
-     [listenr-cljs.core]
+     [listenr.core]
      [figwheel.client :as fw]))
 
 (fw/start {

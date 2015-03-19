@@ -1,4 +1,4 @@
-(ns ^:figwheel-always listenr-cljs.core
+(ns ^:figwheel-always listenr.core
     (:require))
 
 (enable-console-print!)
