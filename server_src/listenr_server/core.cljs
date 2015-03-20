@@ -13,9 +13,20 @@
 (defonce passport (nodejs/require "passport"))
 (defonce passport-tumblr (nodejs/require "passport-tumblr"))
 (defonce TumblrStrategy (.. passport-tumblr -Strategy))
+(defonce request (nodejs/require "request"))
 
 (def oauth-key (.. process -env -TUMBLR_OAUTH_KEY))
 (def oauth-secret (.. process -env -TUMBLR_OAUTH_SECRET))
+
+(defn request-oauth-map [token token_secret]
+  #js {:consumer_key oauth-key
+       :consumer_secret oauth-secret
+       :token token
+       :token_secret token_secret})
+
+;; eventually replace with something like redis...
+;; don't really care for persistence, so in-memory store is just fine.
+(defonce users (atom {}))
 
 (. passport
    (use
@@ -24,6 +35,9 @@
           :consumerSecret oauth-secret
           :callbackURL "http://ethanis.dyndns.org:8000/auth/callback"}
      (fn [token token-secret profile done]
+       (swap! users assoc (.-username profile)
+              {:token token
+               :token_secret token-secret})
        (done nil profile)))))
 
 (. passport
@@ -39,7 +53,7 @@
 (defn ensure-auth [req res next]
   (if (. req (isAuthenticated))
     (next)
-    (.redirect res "/login")))
+    (.redirect res "/auth")))
        
 ;; app gets redefined on reload
 (def app (express))
@@ -78,6 +92,20 @@
             (. passport (authenticate "tumblr"))
             (fn [req res] )))
 
+(def tumblr-base-url "http://api.tumblr.com/v2/")
+
+(. app
+   (get "/likes" ensure-auth
+        (fn [req res]
+          (when-let [{:keys [token token_secret]}
+                     (get @users (.. req -user -username))]
+            (let [oauth (request-oauth-map token token_secret)]
+              (.. request
+                  (get #js {:url (str tumblr-base-url "user/likes")
+                            :oauth oauth
+                            :json true}
+                       (fn [err response body]
+                         (. res (send (.. body -response -liked_posts)))))))))))
 
 (def -main
   (fn []

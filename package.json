@@ -12,6 +12,7 @@
     "passport": "^0.2.1",
     "passport-tumblr": "^0.1.2",
     "process": "^0.10.1",
+    "request": "^2.53.0",
     "serve-static": "^1.9.2"
   },
   "devDependencies": {
