@@ -53,7 +53,9 @@
 (defn ensure-auth [req res next]
   (if (. req (isAuthenticated))
     (next)
-    (.redirect res "/auth")))
+    (do
+      (set! (.. req -session -redirect) (.-url req))
+      (.redirect res "/auth"))))
        
 ;; app gets redefined on reload
 (def app (express))
@@ -86,7 +88,8 @@
 (. app (get "/auth/callback"
             (. passport
                (authenticate "tumblr" #js {:failureRedirect "/login"}))
-            (fn [req res] (.redirect res "/"))))
+            (fn [req res]
+              (.redirect res (or (.. req -session -redirect) "/")))))
 
 (. app (get "/logout"
             (. passport (authenticate "tumblr"))
@@ -94,18 +97,38 @@
 
 (def tumblr-base-url "http://api.tumblr.com/v2/")
 
+(defn tumblr-request [{:keys [url req res-fn params]}]
+  (when-let [{:keys [token token_secret]}
+             (get @users (.. req -user -username))]
+    (let [oauth (request-oauth-map token token_secret)]
+      (.. request
+          (get #js {:url   (str tumblr-base-url url)
+                    :oauth oauth
+                    :json  true
+                    :qs    (clj->js (or params {}))}
+              res-fn)))))
+  
 (. app
    (get "/likes" ensure-auth
         (fn [req res]
-          (when-let [{:keys [token token_secret]}
-                     (get @users (.. req -user -username))]
-            (let [oauth (request-oauth-map token token_secret)]
-              (.. request
-                  (get #js {:url (str tumblr-base-url "user/likes")
-                            :oauth oauth
-                            :json true}
-                       (fn [err response body]
-                         (. res (send (.. body -response -liked_posts)))))))))))
+          (tumblr-request
+           {:url "user/likes"
+            :req req
+            :res-fn
+            (fn [err response body]
+              (. res (send (.. body -response -liked_posts))))}))))
+
+(. app
+   (get "/dashboard" ensure-auth
+        (fn [req res]
+          (tumblr-request
+           {:url "user/dashboard"
+            :req req
+            :params {:type "audio"}
+            :res-fn
+            (fn [err response body]
+              (. res (send (.. body -response -posts))))}))))
+
 
 (def -main
   (fn []
